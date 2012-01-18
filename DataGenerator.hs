@@ -1,6 +1,8 @@
 
 {-# LANGUAGE RecordWildCards #-}
 
+module DataGenerator (Params(..), params, sample) where
+
 import Control.Applicative
 import Data.Word
 import Data.List
@@ -41,7 +43,7 @@ runPDF pdf = \x -> fst $ head $ dropWhile ((<x).snd) pdf'
 -- возможно это надо как-то учитывать в бенчмарках.
 -- [*] думаю, не в последнюю очередь из-за stdGen, где-то его ругали за тормознутость.
 -- Пруфлинка нет.
-sample :: Params -> [(B.ByteString,B.ByteString)]
+sample :: Params -> IO [(B.ByteString,B.ByteString)]
 -- Можно сделать более общий тип [([a],[b])], только осторожно, чтобы в `chunks` память не текла.
 sample (Params {..}) = do
   keys   <- chunks (repeat key_size) . randoms <$> newStdGen
