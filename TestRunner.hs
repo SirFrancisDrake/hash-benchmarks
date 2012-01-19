@@ -4,7 +4,7 @@ import System.IO
 import System.Process
 import DataGenerator
 
-testNames = ["generator", "data-map"]
+testNames = ["data-map"]
 dataVariants = map show [0..11]
 dataSizes = map show [10^4, 3*10^4]
 
@@ -22,6 +22,8 @@ run args = do
   putStrLn $ show args ++ ": " ++ parseRTS out
 
 
-parseRTS = (!!4) . lines
+parseRTS out = concatMap (lns!!) [4,5,6]
+  where
+    lns = lines out
 
 
