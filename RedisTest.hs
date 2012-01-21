@@ -17,6 +17,7 @@ import TestData
 -- Эта функция -- боттлнек. Я не знаю, как решить такую проблему.
 -- Естественно, боттлнек происходит до подсчёта времени
 splitEvery :: Int -> [a] -> [[a]]
+splitEvery 0 _ = []
 splitEvery i xs | (length xs <= i) = [xs]
                 | otherwise = (take i xs):(splitEvery i (drop i xs))
 
@@ -74,16 +75,22 @@ runGet r ps = do
 testRedis :: Int -> [TestPair] -> IO String -- IO Performance Info
 testRedis clients testPairs = do
     r <- connect host port
+    select r db
     flushDb r
 
     rs <- makeConnections clients host port db
-    let pairs = splitEvery clients testPairs
+    let pairs = splitEvery (ceiling $ fromIntegral (length testPairs) / fromIntegral clients) testPairs
+    -- make a note that splitEvery (ceiling $ fromIntegral (length [1..9]) / 4) [1..9] gives a reply
+    -- of [[1,2,3],[4,5,6],[7,8,9]], which has all the numbers, but leaves out one connection.
+    -- A correct answer would be [[1,2,3],[4,5],[6,7],[8,9]], but the appropriate function is longer
 
     (setTime, getTime) <- runTest $ zip rs pairs
+
+    mapM_ disconnect rs
 
     return $ join $ intersperse "\n" ["Set time: " ++ show setTime, "Get time: " ++ show getTime]
         
 main = do
-    testData <- genData 100000
-    perfInfo <- testRedis 1000 testData
+    testData <- genData 10000
+    perfInfo <- testRedis 1 testData
     putStrLn perfInfo
