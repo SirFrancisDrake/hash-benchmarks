@@ -38,7 +38,7 @@ waitForThreads :: IO ()
 waitForThreads = do
     threads <- takeMVar threadList
     case threads of
-        [] -> return ()
+        [] -> putMVar threadList [] >> return ()
         (t:ts) -> do
             putMVar threadList ts
             thread <- takeMVar t
@@ -57,10 +57,10 @@ runTest pairs = do
     time <- getCurrentTime
     mapM_ (runFn runPut) pairs
     waitForThreads
-    setTime <- (diffUTCTime time) <$> getCurrentTime
+    setTime <- (flip diffUTCTime time) <$> getCurrentTime
     time <- getCurrentTime
     mapM_ (runFn runGet) pairs
-    getTime <- (diffUTCTime time) <$> getCurrentTime
+    getTime <- (flip diffUTCTime time) <$> getCurrentTime
     return (setTime, getTime)
 
 runPut :: Redis -> [TestPair] -> IO ()
@@ -79,11 +79,11 @@ testRedis clients testPairs = do
     rs <- makeConnections clients host port db
     let pairs = splitEvery clients testPairs
 
-    (getTime, setTime) <- runTest $ zip rs pairs
+    (setTime, getTime) <- runTest $ zip rs pairs
 
-    return $ join $ intersperse "\n" [show getTime, show setTime]
+    return $ join $ intersperse "\n" ["Set time: " ++ show setTime, "Get time: " ++ show getTime]
         
 main = do
-    testData <- genData 100
-    perfInfo <- testRedis 1 testData
+    testData <- genData 100000
+    perfInfo <- testRedis 1000 testData
     putStrLn perfInfo
