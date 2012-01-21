@@ -9,3 +9,9 @@ type TestPair = (String, TestStruct)
 
 convert :: TestStruct -> TestPair
 convert t = (ts_someCode t, t)
+
+genData :: Int -> IO [TestPair]
+genData size = do
+    let genStruct i = TestStruct i (show i)
+    return $ map (\i -> (show i, genStruct i) ) [1..size]
+
