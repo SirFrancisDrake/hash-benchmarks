@@ -44,33 +44,35 @@ waitForThreads = do
             thread <- takeMVar t
             waitForThreads
 
-fork :: ((Redis, [TestPair]) -> IO ()) -> (Redis, [TestPair]) -> IO ThreadId
-fork fn d = do
+fork :: (Redis -> [TestPair] -> IO ()) -> Redis -> [TestPair] -> IO ThreadId
+fork fn r d = do
     mvar <- newEmptyMVar
     threads <- takeMVar threadList
     putMVar threadList (mvar:threads)
-    forkIO (do { fn d >> putMVar mvar () })
+    forkIO (do { fn r d >> putMVar mvar () })
 
 runTest :: [ (Redis, [TestPair]) ] -> IO (NominalDiffTime, NominalDiffTime)
 runTest pairs = do
+    let runFn fn = \pair -> fork fn (fst pair) (snd pair)
     time <- getCurrentTime
-    mapM_ (\pair -> fork runPut pair) pairs
+    mapM_ (runFn runPut) pairs
     waitForThreads
     setTime <- (diffUTCTime time) <$> getCurrentTime
-    mapM_ (\pair -> fork runGet pair) pairs
-    getTime <- (diffUTCTime setTime) <$> getCurrentTime
+    time <- getCurrentTime
+    mapM_ (runFn runGet) pairs
+    getTime <- (diffUTCTime time) <$> getCurrentTime
     return (setTime, getTime)
 
-runPut :: (Redis, [TestPair]) -> IO ()
-runPut (r, ps) = do
-    mapM_ (\p -> set r (fst p) (snd p)) ps
+runPut :: Redis -> [TestPair] -> IO ()
+runPut r ps = do
+    mapM_ (\p -> set r (fst p) (show $ snd p)) ps
 
-runGet :: (Redis, [TestPair]) -> IO ()
-runGet (r, ps) = do
+runGet :: Redis -> [TestPair] -> IO ()
+runGet r ps = do
     mapM_ (\p -> get r (fst p) :: IO (Reply ())) ps
 
-testRedis :: [TestPair] -> IO String -- IO Performance Info
-testRedis testPairs = do
+testRedis :: Int -> [TestPair] -> IO String -- IO Performance Info
+testRedis clients testPairs = do
     r <- connect host port
     flushDb r
 
@@ -79,5 +81,9 @@ testRedis testPairs = do
 
     (getTime, setTime) <- runTest $ zip rs pairs
 
-    return $ join $ intersperse "\n" [getTime, setTime]
+    return $ join $ intersperse "\n" [show getTime, show setTime]
         
+main = do
+    testData <- genData 100
+    perfInfo <- testRedis 1 testData
+    putStrLn perfInfo

@@ -12,11 +12,6 @@ main = do
     redisOutput <- testRedis testData
     hashtablesOutput <- testHashtables testData
 
-genData :: Int -> IO [TestStruct]
-genData size = do
-    return $ map (\i -> (TestStruct i i (show i)) ) [1..size]
-
 
 testHashtables :: [TestStruct] -> IO String
 testHashtables = undefined
-    
