@@ -5,6 +5,10 @@ data TestStruct = TestStruct { ts_someNumber :: Int
                              }
                     deriving (Show)
 
+-- size of TestStruct should be 5 words + 1 word for each word in string iirc
+-- meaning, 7 words for a total of 56 bytes, round it to 64, amiright?
+-- hashmap thinks 
+
 type TestPair = (String, TestStruct)
 
 convert :: TestStruct -> TestPair

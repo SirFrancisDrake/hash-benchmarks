@@ -12,8 +12,8 @@ import qualified Data.HashMap as H
 
 import TestData
 
-runTest :: [TestPair] -> IO String -- IO Performance info
-runTest vals = do
+runTestWithData :: [TestPair] -> IO String -- IO Performance info
+runTestWithData vals = do
     time <- getCurrentTime
     hmap <- genHashMap vals
     evaluate hmap
@@ -29,9 +29,15 @@ genHashMap :: [TestPair] -> IO (H.HashMap String TestStruct)
 genHashMap vals = return $ H.fromList vals
 
 queryHashMap :: (H.HashMap String TestStruct) -> IO [String]
-queryHashMap hmap = return $ map (\k -> ts_someCode (fromJust $ H.lookup k hmap) ++ "hi") (H.keys hmap)
+queryHashMap hmap = return $ map (\k -> ts_someCode (fromJust $ H.lookup k hmap)) (H.keys hmap)
+
+runTest :: Int -> IO ()
+runTest size = do
+    testData <- genData size
+    perfInfo <- runTestWithData testData
+    putStrLn $ perfInfo
 
 main = do
     testData <- genData 100000
-    perfInfo <- runTest testData
+    perfInfo <- runTestWithData testData
     putStrLn perfInfo
