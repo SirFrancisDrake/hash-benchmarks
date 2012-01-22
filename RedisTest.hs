@@ -66,11 +66,11 @@ runTest pairs = do
 
 runPut :: Redis -> [TestPair] -> IO ()
 runPut r ps = do
-    mapM_ (\p -> set r (fst p) (show $ snd p)) ps
+    sequence_ $ map (\p -> set r (fst p) (show $ snd p)) ps
 
 runGet :: Redis -> [TestPair] -> IO ()
 runGet r ps = do
-    mapM_ (\p -> get r (fst p) :: IO (Reply ())) ps
+    sequence_ $ map (\p -> get r (fst p) :: IO (Reply ())) ps
 
 testRedis :: Int -> [TestPair] -> IO String -- IO Performance Info
 testRedis clients testPairs = do
@@ -91,6 +91,6 @@ testRedis clients testPairs = do
     return $ join $ intersperse "\n" ["Set time: " ++ show setTime, "Get time: " ++ show getTime]
         
 main = do
-    testData <- genData 10000
+    testData <- genData 10
     perfInfo <- testRedis 1 testData
     putStrLn perfInfo
