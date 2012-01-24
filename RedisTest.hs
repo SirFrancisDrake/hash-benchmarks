@@ -1,15 +1,13 @@
-module RedisTest 
-  ( testRedis
-  )
-  where
-
 import Control.Applicative ((<$>))
 import Control.Concurrent
 import Control.Concurrent.MVar
 import Control.Monad (join)
 import Data.List (intersperse)
+import qualified Data.Map as M
+import Data.Maybe (fromJust)
 import Database.Redis.Redis
 import Data.Time.Clock
+import System (getArgs)
 import System.IO.Unsafe
 
 import TestData
@@ -17,6 +15,7 @@ import TestData
 -- Эта функция -- боттлнек. Я не знаю, как решить такую проблему.
 -- Естественно, боттлнек происходит до подсчёта времени
 splitEvery :: Int -> [a] -> [[a]]
+splitEvery _ [] = []
 splitEvery 0 _ = []
 splitEvery i xs | (length xs <= i) = [xs]
                 | otherwise = (take i xs):(splitEvery i (drop i xs))
@@ -32,21 +31,18 @@ makeConnections count host port db = mapM mkConn [0 .. (count - 1)]
                         select r db
                         return r
 
-threadList :: MVar [ MVar () ]
-threadList = unsafePerformIO (newMVar [])
-
-waitForThreads :: IO ()
-waitForThreads = do
+waitForThreads :: MVar [ MVar () ] -> IO ()
+waitForThreads threadList = do
     threads <- takeMVar threadList
     case threads of
         [] -> putMVar threadList [] >> return ()
         (t:ts) -> do
             putMVar threadList ts
             thread <- takeMVar t
-            waitForThreads
+            waitForThreads threadList
 
-fork :: (Redis -> [TestPair] -> IO ()) -> Redis -> [TestPair] -> IO ThreadId
-fork fn r d = do
+fork :: (Redis -> [TestPair] -> IO ()) -> Redis -> [TestPair] -> MVar [ MVar () ] -> IO ThreadId
+fork fn r d threadList = do
     mvar <- newEmptyMVar
     threads <- takeMVar threadList
     putMVar threadList (mvar:threads)
@@ -54,14 +50,19 @@ fork fn r d = do
 
 runTest :: [ (Redis, [TestPair]) ] -> IO (NominalDiffTime, NominalDiffTime)
 runTest pairs = do
-    let runFn fn = \pair -> fork fn (fst pair) (snd pair)
+    let threadList = unsafePerformIO (newMVar [])
+    let runFn fn = \pair -> fork fn (fst pair) (snd pair) threadList
+
     time <- getCurrentTime
     mapM_ (runFn runPut) pairs
-    waitForThreads
+    waitForThreads threadList
     setTime <- (flip diffUTCTime time) <$> getCurrentTime
+
     time <- getCurrentTime
     mapM_ (runFn runGet) pairs
+    waitForThreads threadList
     getTime <- (flip diffUTCTime time) <$> getCurrentTime
+
     return (setTime, getTime)
 
 runPut :: Redis -> [TestPair] -> IO ()
@@ -86,11 +87,18 @@ testRedis clients testPairs = do
 
     (setTime, getTime) <- runTest $ zip rs pairs
 
+    dbInfo <- info r
+    let memory = fromJust $ M.lookup "used_memory_human" dbInfo
+
     mapM_ disconnect rs
 
-    return $ join $ intersperse "\n" ["Set time: " ++ show setTime, "Get time: " ++ show getTime]
+    return $ "\nClients: " ++ show clients ++ "\nSet time: " ++ show setTime ++ "\nGet time: " ++ show getTime ++
+            "\nMemory used in Redis: " ++ show memory
+
+testRedisMultipleClients :: [Int] -> [TestPair] -> IO String -- IO Performance Info
+testRedisMultipleClients clients testPairs = 
+    unlines <$> mapM (\c -> testRedis c testPairs) clients
         
 main = do
-    testData <- genData 10
-    perfInfo <- testRedis 1 testData
-    putStrLn perfInfo
+    args <- getArgs
+    genData (read $ head args) >>= testRedisMultipleClients (map read $ tail args) >>= putStrLn
