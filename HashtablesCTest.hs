@@ -4,41 +4,41 @@ import Control.Exception
 import Control.Monad (when)
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
+import qualified Data.HashTable.IO as H
 import Data.Maybe (fromJust)
 import Data.Time.Clock
-import qualified Data.Map as H
 import System (getArgs)
 import System.Console.GetOpt
 import System.Exit (exitFailure, exitSuccess)
 
+import ByteStringInstance
 import DataGenerator
-import TestData
 import Options
+import TestData
 import ZagZag
 
-instance NFData B.ByteString where
-    rnf a = rnf (BC.unpack a)
+type HashTable k v = H.CuckooHashTable k v
 
 runTestWithData :: [TestPair] -> IO String -- IO Performance info
 runTestWithData vals = do
     time <- getCurrentTime
-    let hmap = genMap vals
+    hmap <- genHashtable vals
     evaluate hmap
     setTime <- (flip diffUTCTime time) <$> getCurrentTime
     time <- getCurrentTime
-    let hresult = queryMap hmap
+    hresult <- queryHashtable hmap
     evaluate (rnf hresult)
     getTime <- (flip diffUTCTime time) <$> getCurrentTime
-    return $ "Set time: " ++ show setTime ++ "\nGet time: " ++ show getTime
+    return $ "Cuckoo Hashtable results\nSet time: " ++ show setTime ++ "\nGet time: " ++ show getTime
+
+genHashtable :: [TestPair] -> IO (HashTable B.ByteString B.ByteString)
+genHashtable vals = H.fromList vals
+
+queryHashtable :: (HashTable B.ByteString B.ByteString) -> IO [(B.ByteString, B.ByteString)]
+queryHashtable ht = H.toList ht
 
 runTest :: (Params, [TestPair]) -> IO ()
 runTest (pr, tps) = putStrLn ("\n" ++ (show pr) ++ "\nNumber of test pairs: " ++ show (length tps)) >> runTestWithData tps >>= putStrLn
-
-genMap :: [TestPair] -> H.Map B.ByteString B.ByteString
-genMap vals = H.fromList vals
-
-queryMap :: (H.Map B.ByteString B.ByteString) -> [B.ByteString]
-queryMap hmap = map (\k -> fromJust $ H.lookup k hmap) (H.keys hmap)
 
 spawnWorkingPairs :: [Params] -> [Int] -> IO [ (Params, [TestPair]) ]
 spawnWorkingPairs params sizes = do
@@ -60,12 +60,14 @@ main = do
     let l = o_lastParamToTake opts
     let s = o_startingDataSize opts
     let e = o_endingDataSize opts
-    let z = o_dataSizeStep opts
+    let z = if o_dataSizeStep opts /= 0 then o_dataSizeStep opts
+                                        else 1000
 
     let dataSizeSteps = if ( (e - s) `mod` z == 0) then [s, s + z..e]
                                                    else let numberOfSteps = floor $ (fromIntegral $ e - s) / (fromIntegral z)
                                                             lastStep = s + z * numberOfSteps
                                                         in [s, (s + z)..lastStep] ++ [e] 
+
     let usedParams = take (l-f+1) $ drop (f - 1) params
 
     workingPairs <- spawnWorkingPairs usedParams dataSizeSteps

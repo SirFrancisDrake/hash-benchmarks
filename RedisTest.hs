@@ -1,16 +1,21 @@
 import Control.Applicative ((<$>))
 import Control.Concurrent
 import Control.Concurrent.MVar
-import Control.Monad (join)
-import Data.List (intersperse)
-import qualified Data.Map as M
+import Control.Monad (when)
+import qualified Data.ByteString as B
+import qualified Data.Map as M -- for parsing RedisInfo which is a Map
 import Data.Maybe (fromJust)
 import Database.Redis.Redis
 import Data.Time.Clock
 import System (getArgs)
+import System.Console.GetOpt
+import System.Exit (exitFailure, exitSuccess)
 import System.IO.Unsafe
 
+import DataGenerator
+import Options hiding (defOpts)
 import TestData
+import ZagZag
 
 -- Эта функция -- боттлнек. Я не знаю, как решить такую проблему.
 -- Естественно, боттлнек происходит до подсчёта времени
@@ -20,7 +25,6 @@ splitEvery 0 _ = []
 splitEvery i xs | (length xs <= i) = [xs]
                 | otherwise = (take i xs):(splitEvery i (drop i xs))
 
-clients = 1
 host = localhost
 port = defaultPort
 db = 5
@@ -67,7 +71,7 @@ runTest pairs = do
 
 runPut :: Redis -> [TestPair] -> IO ()
 runPut r ps = do
-    sequence_ $ map (\p -> set r (fst p) (show $ snd p)) ps
+    sequence_ $ map (\p -> set r (fst p) (snd p)) ps
 
 runGet :: Redis -> [TestPair] -> IO ()
 runGet r ps = do
@@ -98,7 +102,44 @@ testRedis clients testPairs = do
 testRedisMultipleClients :: [Int] -> [TestPair] -> IO String -- IO Performance Info
 testRedisMultipleClients clients testPairs = 
     unlines <$> mapM (\c -> testRedis c testPairs) clients
+
+wrappedTestRedisMultipleClients :: [Int] -> (Params, [TestPair]) -> IO ()
+wrappedTestRedisMultipleClients clients (p, tps) = putStrLn ("\n" ++ show p) >> testRedisMultipleClients clients tps >>= putStrLn
         
+defOpts = Opt defFirstParam defLastParam defStartingDataSize defEndingDataSize defDataSizeStep defThreads False
+
+spawnWorkingPairs :: [Params] -> [Int] -> IO [ (Params, [TestPair]) ]
+spawnWorkingPairs params sizes = do
+    let spawnWorkingPair (param, size) = take size <$> sample param >>= \ps -> return (param, ps)
+    mapM spawnWorkingPair (makeTuples params sizes)
+
 main = do
     args <- getArgs
-    genData (read $ head args) >>= testRedisMultipleClients (map read $ tail args) >>= putStrLn
+    opts <- case getOpt RequireOrder options args of
+        (o, [], []) -> return $ foldl (flip id) defOpts o
+        (_, n, [])  -> do putStrLn $ "Unrecognized arguments: " ++ concat n ++ usageInfo "\nUsage: " options
+                          exitFailure
+        (_, _, es)  -> do putStrLn $ concat es ++ usageInfo "\nUsage:" options
+                          exitFailure
+
+    when (o_help opts) $ do putStrLn $ usageInfo "Usage:" options
+
+    let f = o_firstParamToTake opts
+    let l = o_lastParamToTake opts
+    let s = o_startingDataSize opts
+    let e = o_endingDataSize opts
+    let z = if o_dataSizeStep opts /= 0 then o_dataSizeStep opts
+                                        else 1000
+    let t = o_threads opts
+
+    let dataSizeSteps = if ( (e - s) `mod` z == 0) then [s, s + z..e]
+                                                   else let numberOfSteps = floor $ (fromIntegral $ e - s) / (fromIntegral z)
+                                                            lastStep = s + z * numberOfSteps
+                                                        in [s, (s + z)..lastStep] ++ [e] 
+    let usedParams = take (l-f+1) $ drop (f - 1) params
+
+    workingPairs <- spawnWorkingPairs usedParams dataSizeSteps
+    
+    mapM (wrappedTestRedisMultipleClients [1..t]) workingPairs
+
+    putStrLn $ "Done."

@@ -14,8 +14,12 @@ import System.Random
 
 data Params = Params
 	{ key_size :: Int
-  , val_size_pdf :: [(Int,Double)]
-	} deriving Show
+    , val_size_pdf :: [(Int,Double)]
+	} 
+    deriving ()
+
+instance Show Params where
+    show (Params ks vs) = "key_size: " ++ show ks ++ "; value_size: " ++ show vs
 
 -- Это наборы данных.
 -- Основная идея в том, чтобы понять насколько стоит заморачиваться с

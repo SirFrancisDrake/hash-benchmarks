@@ -6,27 +6,25 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 import Data.Maybe (fromJust)
 import Data.Time.Clock
-import qualified Data.Map as H
+import qualified Data.HashMap as H
 import System (getArgs)
 import System.Console.GetOpt
 import System.Exit (exitFailure, exitSuccess)
 
+import ByteStringInstance
 import DataGenerator
-import TestData
 import Options
+import TestData
 import ZagZag
-
-instance NFData B.ByteString where
-    rnf a = rnf (BC.unpack a)
 
 runTestWithData :: [TestPair] -> IO String -- IO Performance info
 runTestWithData vals = do
     time <- getCurrentTime
-    let hmap = genMap vals
+    let hmap = genHashMap vals
     evaluate hmap
     setTime <- (flip diffUTCTime time) <$> getCurrentTime
     time <- getCurrentTime
-    let hresult = queryMap hmap
+    let hresult = queryHashMap hmap
     evaluate (rnf hresult)
     getTime <- (flip diffUTCTime time) <$> getCurrentTime
     return $ "Set time: " ++ show setTime ++ "\nGet time: " ++ show getTime
@@ -34,11 +32,11 @@ runTestWithData vals = do
 runTest :: (Params, [TestPair]) -> IO ()
 runTest (pr, tps) = putStrLn ("\n" ++ (show pr) ++ "\nNumber of test pairs: " ++ show (length tps)) >> runTestWithData tps >>= putStrLn
 
-genMap :: [TestPair] -> H.Map B.ByteString B.ByteString
-genMap vals = H.fromList vals
+genHashMap :: [TestPair] -> H.HashMap B.ByteString B.ByteString
+genHashMap vals = H.fromList vals
 
-queryMap :: (H.Map B.ByteString B.ByteString) -> [B.ByteString]
-queryMap hmap = map (\k -> fromJust $ H.lookup k hmap) (H.keys hmap)
+queryHashMap :: (H.HashMap B.ByteString B.ByteString) -> [B.ByteString]
+queryHashMap hmap = map (\k -> fromJust $ H.lookup k hmap) (H.keys hmap)
 
 spawnWorkingPairs :: [Params] -> [Int] -> IO [ (Params, [TestPair]) ]
 spawnWorkingPairs params sizes = do
@@ -69,7 +67,7 @@ main = do
     let usedParams = take (l-f+1) $ drop (f - 1) params
 
     workingPairs <- spawnWorkingPairs usedParams dataSizeSteps
-    
+
     mapM runTest workingPairs
 
     putStrLn $ "Done."
