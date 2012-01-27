@@ -6,6 +6,7 @@ module Options
   , defEndingDataSize
   , defDataSizeStep
   , defThreads
+  , defRandomSamples
   , defOpts
   , options
   )
@@ -20,17 +21,19 @@ data Opt = Opt { o_firstParamToTake :: Int
                , o_endingDataSize :: Int
                , o_dataSizeStep :: Int
                , o_threads :: Int
+               , o_randomSamples :: Int
                , o_help :: Bool
                }
            deriving Show
 
-defOpts = Opt defFirstParam defLastParam defStartingDataSize defEndingDataSize defDataSizeStep defThreads False
+defOpts = Opt defFirstParam defLastParam defStartingDataSize defEndingDataSize defDataSizeStep defThreads defRandomSamples False
 defFirstParam = 1
 defLastParam = 1
 defStartingDataSize = 10000
 defEndingDataSize = 10000
 defDataSizeStep = 100
 defThreads = 1
+defRandomSamples = 300
 
 options :: [OptDescr (Opt -> Opt)]
 options = [Option ['f'] ["firstParamToTake"] (OptArg (maybe id (\f o -> o{o_firstParamToTake = read f})) "firstParamToTake") ("First param to be tested (default " ++ show defFirstParam ++ ")"),
@@ -39,4 +42,5 @@ options = [Option ['f'] ["firstParamToTake"] (OptArg (maybe id (\f o -> o{o_firs
            Option ['e'] ["endingDataSize"] (OptArg (maybe id (\d o -> o{o_endingDataSize = read d})) "endingDataSize") ("Data size to stop at (default " ++ show defEndingDataSize ++ ")"),
            Option ['z'] ["dataSizeStep"] (OptArg (maybe id (\z o -> o{o_dataSizeStep = read z})) "dataSizeStep") ("Data size is stepped by (default " ++ show defDataSizeStep ++ ")"),
            Option ['t'] ["threads"] (OptArg (maybe id (\t o -> o{o_threads = read t})) "threads") ("Maximum number of threads to run (minimum is always 1, default " ++ show defThreads ++ ")"),
+           Option ['r'] ["randomSamples"] (OptArg (maybe id (\r o -> o{o_threads = read r})) "randomSamples") ("Number of random samples to get (default " ++ show defRandomSamples ++ ")"),
            Option [] ["help"] (NoArg (\o -> o{o_help = True})) "Show this usage info"]

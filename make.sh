@@ -1,16 +1,13 @@
 echo "Removing various trash "
-rm makelog.txt
-rm *.hi
-rm *.o
-rm HashmapTest 
-rm HashtablesBTest
-rm HashtablesCTest
-rm HashtablesLTest
-rm MapTest
-rm RedisTest
-rm TestRunner
-echo "Making HashmapTest.hs"
-ghc --make -O2 -rtsopts HashmapTest >> makelog.txt
+rm makelog.txt > /dev/null
+rm *.hi > /dev/null
+rm *.o > /dev/null
+rm HashtablesBTest > /dev/null
+rm HashtablesCTest > /dev/null
+rm HashtablesLTest > /dev/null
+rm MapTest > /dev/null
+rm RedisTest > /dev/null
+rm TestRunner > /dev/null
 echo "Making HashtablesBTest.hs"
 ghc --make -O2 -rtsopts HashtablesBTest >> makelog.txt
 echo "Making HashtablesCTest.hs"
@@ -24,6 +21,6 @@ ghc --make -O2 -rtsopts RedisTest >> makelog.txt
 echo "Making TestRunner.hs"
 ghc --make -O2 -rtsopts TestRunner >> makelog.txt
 echo "Removing *.hi and *.o files"
-rm *.hi
-rm *.o
+rm *.hi > /dev/null
+rm *.o > /dev/null
 echo "All done."

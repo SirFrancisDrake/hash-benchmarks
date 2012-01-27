@@ -3,6 +3,7 @@ import Control.Concurrent
 import Control.Concurrent.MVar
 import Control.Monad (when)
 import qualified Data.ByteString as B
+import Data.List (foldl')
 import qualified Data.Map as M -- for parsing RedisInfo which is a Map
 import Data.Maybe (fromJust)
 import Database.Redis.Redis
@@ -13,7 +14,7 @@ import System.Exit (exitFailure, exitSuccess)
 import System.IO.Unsafe
 
 import DataGenerator
-import Options hiding (defOpts)
+import Options
 import TestData
 import ZagZag
 
@@ -63,7 +64,7 @@ runTest pairs = do
     setTime <- (flip diffUTCTime time) <$> getCurrentTime
 
     time <- getCurrentTime
-    mapM_ (runFn runGet) pairs
+    mapM_ (runFn runGetAll) pairs
     waitForThreads threadList
     getTime <- (flip diffUTCTime time) <$> getCurrentTime
 
@@ -73,8 +74,8 @@ runPut :: Redis -> [TestPair] -> IO ()
 runPut r ps = do
     sequence_ $ map (\p -> set r (fst p) (snd p)) ps
 
-runGet :: Redis -> [TestPair] -> IO ()
-runGet r ps = do
+runGetAll :: Redis -> [TestPair] -> IO ()
+runGetAll r ps = do
     sequence_ $ map (\p -> get r (fst p) :: IO (Reply ())) ps
 
 testRedis :: Int -> [TestPair] -> IO String -- IO Performance Info
@@ -96,18 +97,39 @@ testRedis clients testPairs = do
 
     mapM_ disconnect rs
 
-    return $ "\nClients: " ++ show clients ++ "\nSet time: " ++ show setTime ++ "\nGet time: " ++ show getTime ++
-            "\nMemory used in Redis: " ++ show memory
+    return $ "\nClients: " ++ show clients ++ "\nSet time: " ++ show setTime ++ "\nGet time: " ++ 
+             show getTime ++ "\nMemory used in Redis: " ++ show memory
 
-testRedisMultipleClients :: [Int] -> [TestPair] -> IO String -- IO Performance Info
-testRedisMultipleClients clients testPairs = 
-    unlines <$> mapM (\c -> testRedis c testPairs) clients
+testRedisRandom :: Int -> [TestPair] -> [TestPair] -> IO String
+testRedisRandom random getPairs setPairs = do
+    r <- connect host port
+    select r db
 
-wrappedTestRedisMultipleClients :: [Int] -> (Params, [TestPair]) -> IO ()
-wrappedTestRedisMultipleClients clients (p, tps) = putStrLn ("\n" ++ show p) >> testRedisMultipleClients clients tps >>= putStrLn
+    pairsToRequest <- getRandomSublist random getPairs
+
+    time <- getCurrentTime
+    runGetAll r pairsToRequest
+    rndGetTimeAmongstAll <- flip diffUTCTime time <$> getCurrentTime
+
+    time <- getCurrentTime
+    runPut r setPairs
+    rndSetTimeAmongstAll <- flip diffUTCTime time <$> getCurrentTime
+
+    return $ "Average random access time over " ++ show random ++ " tries: " ++ 
+             show (rndGetTimeAmongstAll / (fromIntegral $ length pairsToRequest)) ++
+             ", average insert time over " ++ show (length setPairs) ++ 
+             " samples is: " ++ show (rndSetTimeAmongstAll / (fromIntegral $ length setPairs))
+
+testRedisMultipleClients :: [Int] -> [TestPair] -> [TestPair] -> Int -> IO String -- IO Performance Info
+testRedisMultipleClients clients testPairs rndSetPairs random = do
+    standardTestResults <- unlines <$> mapM (\c -> testRedis c testPairs) clients
+    randomTestResults <- testRedisRandom random testPairs rndSetPairs
+    return $ standardTestResults ++ randomTestResults
+
+wrappedTestRedisMultipleClients :: [Int] -> (Params, [TestPair]) -> (Params, [TestPair]) -> Int -> IO ()
+wrappedTestRedisMultipleClients clients (p, tps) (_, rndSetPairs) random = 
+    putStrLn ("\n" ++ show p) >> testRedisMultipleClients clients tps rndSetPairs random >>= putStrLn
         
-defOpts = Opt defFirstParam defLastParam defStartingDataSize defEndingDataSize defDataSizeStep defThreads False
-
 spawnWorkingPairs :: [Params] -> [Int] -> IO [ (Params, [TestPair]) ]
 spawnWorkingPairs params sizes = do
     let spawnWorkingPair (param, size) = take size <$> sample param >>= \ps -> return (param, ps)
@@ -131,6 +153,7 @@ main = do
     let z = if o_dataSizeStep opts /= 0 then o_dataSizeStep opts
                                         else 1000
     let t = o_threads opts
+    let r = o_randomSamples opts
 
     let dataSizeSteps = if ( (e - s) `mod` z == 0) then [s, s + z..e]
                                                    else let numberOfSteps = floor $ (fromIntegral $ e - s) / (fromIntegral z)
@@ -139,7 +162,8 @@ main = do
     let usedParams = take (l-f+1) $ drop (f - 1) params
 
     workingPairs <- spawnWorkingPairs usedParams dataSizeSteps
+    randomInsertPairs <- head <$> spawnWorkingPairs usedParams [r]
     
-    mapM (wrappedTestRedisMultipleClients [1..t]) workingPairs
+    mapM (\p -> wrappedTestRedisMultipleClients [1..t] p randomInsertPairs r) workingPairs
 
     putStrLn $ "Done."

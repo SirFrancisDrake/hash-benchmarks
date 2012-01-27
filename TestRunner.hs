@@ -6,14 +6,12 @@ import System.IO
 import System.Process
 
 import DataGenerator
-import Options hiding (defOpts)
+import Options
 import ZagZag
 
 
-internalTestNames = ["HashtablesBTest", "HashtablesCTest", "HashtablesLTest", "MapTest", "HashmapTest"]
+internalTestNames = ["HashtablesBTest", "HashtablesCTest", "HashtablesLTest", "MapTest"]
 externalTestNames = ["RedisTest"]
-
-defOpts = Opt defFirstParam defLastParam defStartingDataSize defEndingDataSize defDataSizeStep defThreads False
 
 run :: String -> String -> IO ()
 run acmd args = do
@@ -80,7 +78,7 @@ main = do
     let t = o_threads opts
 
     let paramList = [f..l]
-    let threadsList = [1..t]
+    let threadsList = [t..t]
     let dataSizeSteps = if ( (e - s) `mod` z == 0) 
             then [s, s + z..e]
             else let numberOfSteps = floor $ (fromIntegral $ e - s) / (fromIntegral z)

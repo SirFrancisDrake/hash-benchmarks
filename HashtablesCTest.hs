@@ -18,27 +18,44 @@ import TestData
 import ZagZag
 
 type HashTable k v = H.CuckooHashTable k v
+type HashChair = HashTable B.ByteString B.ByteString
+type HashTuple = (B.ByteString, B.ByteString)
 
-runTestWithData :: [TestPair] -> IO String -- IO Performance info
-runTestWithData vals = do
+runTestWithData :: [TestPair] -> Int -> IO String -- IO Performance info
+runTestWithData vals random = do
     time <- getCurrentTime
-    hmap <- genHashtable vals
-    evaluate hmap
+    ht <- genHashtable vals
+    evaluate ht
     setTime <- (flip diffUTCTime time) <$> getCurrentTime
+
+    rndQueryTime <- randomQueryHashtable ht random
+
     time <- getCurrentTime
-    hresult <- queryHashtable hmap
+    hresult <- queryHashtable ht
     evaluate (rnf hresult)
     getTime <- (flip diffUTCTime time) <$> getCurrentTime
-    return $ "Cuckoo Hashtable results\nSet time: " ++ show setTime ++ "\nGet time: " ++ show getTime
+    return $ "Cuckoo Hashtable results\nSet time: " ++ show setTime ++ "\nGet time: "
+             ++ show getTime ++ "\nAverage random query time over " ++ show random ++
+             " samples is: " ++ show (rndQueryTime / (fromIntegral random))
 
-genHashtable :: [TestPair] -> IO (HashTable B.ByteString B.ByteString)
+genHashtable :: [TestPair] -> IO HashChair
 genHashtable vals = H.fromList vals
 
-queryHashtable :: (HashTable B.ByteString B.ByteString) -> IO [(B.ByteString, B.ByteString)]
+queryHashtable :: HashChair -> IO [HashTuple]
 queryHashtable ht = H.toList ht
 
-runTest :: (Params, [TestPair]) -> IO ()
-runTest (pr, tps) = putStrLn ("\n" ++ (show pr) ++ "\nNumber of test pairs: " ++ show (length tps)) >> runTestWithData tps >>= putStrLn
+randomQueryHashtable :: (HashTable B.ByteString B.ByteString) -> Int -> IO NominalDiffTime
+randomQueryHashtable ht rnd = do
+    time <- getCurrentTime
+    pairs <- queryHashtable ht
+    let keys = map fst pairs
+    keysToRequest <- getRandomSublist rnd keys
+    answers <- map fromJust <$> mapM (H.lookup ht) keysToRequest
+    evaluate (rnf answers)
+    (flip diffUTCTime time) <$> getCurrentTime
+
+runTest :: (Params, [TestPair]) -> Int -> IO ()
+runTest (pr, tps) rnd = putStrLn ("\n" ++ (show pr) ++ "\nNumber of test pairs: " ++ show (length tps)) >> runTestWithData tps rnd >>= putStrLn
 
 spawnWorkingPairs :: [Params] -> [Int] -> IO [ (Params, [TestPair]) ]
 spawnWorkingPairs params sizes = do
@@ -62,6 +79,7 @@ main = do
     let e = o_endingDataSize opts
     let z = if o_dataSizeStep opts /= 0 then o_dataSizeStep opts
                                         else 1000
+    let r = o_randomSamples opts
 
     let dataSizeSteps = if ( (e - s) `mod` z == 0) then [s, s + z..e]
                                                    else let numberOfSteps = floor $ (fromIntegral $ e - s) / (fromIntegral z)
@@ -72,6 +90,6 @@ main = do
 
     workingPairs <- spawnWorkingPairs usedParams dataSizeSteps
     
-    mapM runTest workingPairs
+    mapM (\p -> runTest p r) workingPairs
 
     putStrLn $ "Done."
